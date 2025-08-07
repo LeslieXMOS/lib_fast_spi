@@ -1,0 +1,6 @@
+.vscode
+*.xe
+bin
+build
+*gtkw
+*vcd

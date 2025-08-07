@@ -1,0 +1,77 @@
+1:1 => 34
+2:1 => 34
+3:1 => 33
+4:1 => 33
+6:1 => 33
+
+
+
+input time  core clock  ref clock   state                       ratio
+34          24mhz       24mhz       ok                          1:1
+34          100mhz      100mhz      ok                          1:1
+34          120mhz      100mhz      not ok, inconsist reading   1.2:1
+34          150mhz      100mhz      didn't run                  1.5:1
+34          200mhz      100mhz      ok                          2:1
+34          300mhz      100mhz      not ok, shift right 1 bit   3:1
+34          600mhz      100mhz      not ok, shift right 1 bit   6:1
+34          24mhz       12mhz       ok                          2:1
+34          100mhz      50mhz       ok                          2:1
+34          150mhz      50mhz       not ok, shift right 1 bit   3:1
+34          200mhz      50mhz       not ok, shift right 1 bit   4:1
+34          300mhz      50mhz       not ok, shift right 1 bit   6:1
+34          600mhz      50mhz       not ok, shift right 1 bit   12:1
+34          24mhz       8mhz        not ok, shift right 1 bit   3:1
+34          100mhz      33.3mhz     not ok, shift right 1 bit   3:1
+34          120mhz      33.3mhz     not ok, shift right 1 bit   3.6:1
+34          150mhz      33.3mhz     not ok, shift right 1 bit   4.5:1
+34          200mhz      33.3mhz     not ok, shift right 1 bit   6:1
+34          300mhz      33.3mhz     not ok, shift right 2 bit   9:1
+34          600mhz      33.3mhz     not ok, shift right 2 bit   18:1
+33          24mhz       24mhz       not ok, shift left 1 bit    1:1
+33          100mhz      100mhz      not ok, shift left 1 bit    1:1
+33          120mhz      100mhz      not ok, inconsist reading   1.2:1
+33          150mhz      100mhz      didn't run                  1.5:1
+33          200mhz      100mhz      not ok, shift left 1 bit    2:1
+33          300mhz      100mhz      ok                          3:1
+33          600mhz      100mhz      ok                          6:1
+33          24mhz       12mhz       not ok, shift left 1 bit    2:1
+33          100mhz      50mhz       not ok, shift left 1 bit    2:1
+33          150mhz      50mhz       not ok, rubbish reading     3:1
+33          200mhz      50mhz       ok                          4:1
+33          300mhz      50mhz       ok                          6:1
+33          600mhz      50mhz       ok                          12:1
+33          24mhz       8mhz        ok                          3:1
+33          100mhz      33.3mhz     ok                          3:1
+33          120mhz      33.3mhz     ok                          3.6:1
+33          150mhz      33.3mhz     ok                          4.5:1
+33          200mhz      33.3mhz     ok                          6:1
+33          300mhz      33.3mhz     not ok, shift right 1 bit   9:1
+33          600mhz      33.3mhz     not ok, shift right 1 bit   18:1
+32          24mhz       24mhz       not ok, shift left 2 bit    1:1
+32          100mhz      100mhz      not ok, shift left 2 bit    1:1
+32          120mhz      100mhz      not ok, inconsist reading   1.2:1
+32          150mhz      100mhz      didn't run                  1.5:1
+32          200mhz      100mhz      not ok, shift left 2 bit    2:1
+32          300mhz      100mhz      not ok, shift left 1 bit    3:1
+32          600mhz      100mhz      not ok, shift left 1 bit    6:1
+32          24mhz       12mhz       not ok, shift left 2 bit    2:1
+32          100mhz      50mhz       not ok, shift left 2 bit    2:1
+32          120mhz      50mhz       not ok, incorrect reading   3:1
+32          150mhz      50mhz       not ok, shift left 1 bit    3:1
+32          200mhz      50mhz       not ok, shift left 1 bit    4:1
+32          300mhz      50mhz       not ok, shift left 1 bit    6:1
+32          600mhz      50mhz       not ok, shift left 1 bit    12:1
+31          24mhz       24mhz       not ok, shift left 3 bit    1:1
+31          100mhz      100mhz      not ok, shift left 3 bit    1:1
+31          120mhz      100mhz      not ok, inconsist reading   1.2:1
+31          150mhz      100mhz      didn't run                  1.5:1
+31          200mhz      100mhz      not ok, shift left 3 bit    2:1
+31          300mhz      100mhz      not ok, shift left 2 bit    3:1
+31          600mhz      100mhz      not ok, shift left 2 bit    6:1
+30          24mhz       24mhz       not ok, shift left 4 bit    1:1
+30          100mhz      100mhz      not ok, shift left 4 bit    1:1
+30          120mhz      100mhz      not ok, inconsist reading   1.2:1
+30          150mhz      100mhz      didn't run                  1.5:1
+30          200mhz      100mhz      not ok, shift left 4 bit    2:1
+30          300mhz      100mhz      not ok, shift left 3 bit    3:1
+30          600mhz      100mhz      not ok, shift left 3 bit    6:1
