@@ -65,6 +65,8 @@ void check_data_same(uint8_t* a, uint8_t* b, size_t len, int div) {
     }
 }
 
+unsigned num_nop = 4;
+
 DECLARE_JOB(read_sensor_task, (spi_master_handle_t*, spi_master_device_handle_t*));
 void read_sensor_task(spi_master_handle_t* spi_ctx, spi_master_device_handle_t* spi_master_dev) {
     uint8_t __attribute__((aligned (4))) tx_buf[640] = {
@@ -150,25 +152,64 @@ void read_sensor_task(spi_master_handle_t* spi_ctx, spi_master_device_handle_t* 
         0xF7, 0xBC, 0x34, 0x08, 0xD2, 0x93, 0xB5, 0x5D
     };
     uint8_t __attribute__((aligned (4))) rx_buf[640] = {0x0};
+    uint8_t __attribute__((aligned (4))) tx_wr_reg_buf[100] = {
+        0x03,                   // WR_DATA
+        0x00, 0x00, 0x00,       // address
+        0x00, 0x00,             // NOP
+        0x00, 0x00,             // NOP
+        // 0x00, 0x00,             // NOP
+        // 0x00, 0x00,             // NOP
+        0xFF, 0xEE, 0xBB, 0xAA, // data
+        0x00                    // dummy
+    };
+    uint8_t __attribute__((aligned (4))) tx_rd_reg_buf[100] = {
+        0x04,                   // WR_DATA
+        0x00, 0x00, 0x00,       // address
+        0x00, 0x00,             // NOP
+        0x00, 0x00,             // NOP
+        // 0x00, 0x00,             // NOP
+        // 0x00, 0x00,             // NOP
+        0x00, 0x00, 0x00, 0x00, // DUMMY
+        0x00                    // dummy
+    };
     // spi_master_dev->clk_divider = 1;
     // spi_master_dev->input_delay = 34;
     // spi_master_dev->input_delay_1B = 18;
     // new_spi_master_set_clk_div(spi_master_dev, 1);
     // local_thread_mode_set_bits(thread_mode_fast | thread_mode_high_priority);
     local_thread_mode_set_bits(thread_mode_high_priority);
-    while (1) {
-        for (int j = 2; j < 50; ++j) {
-            new_spi_master_set_clk_div(spi_master_dev, j);
-            new_spi_master_init_xfer(spi_master_dev);
-            for (int i = 1; i <= 640; ++i) {
-                memset(rx_buf, 0, sizeof(rx_buf));
-                new_spi_master_xfer(spi_master_dev, tx_buf, rx_buf, i);
-                check_data_same(rx_buf, tx_buf, i, j);
-            }
-        }
-        printf("d\n");
-        // printf("%x %x %x %x\n", rx_buf[0], rx_buf[1], rx_buf[2], rx_buf[3]);
+    new_spi_master_set_clk_div(spi_master_dev, 1);
+    new_spi_master_init_xfer(spi_master_dev);
+    memset(rx_buf, 0, sizeof(rx_buf));
+    for (int i = 0; i < 100; ++i) {
+        asm volatile("nop");
     }
+    // printf("start\n");
+    // delay_microseconds(50);
+    new_spi_master_xfer(spi_master_dev, tx_wr_reg_buf, rx_buf, 8+num_nop);
+    for (int i = 0; i < 100; ++i) {
+        asm volatile("nop");
+    }
+    // delay_microseconds(10);
+    new_spi_master_xfer(spi_master_dev, tx_rd_reg_buf, rx_buf, 8+num_nop);
+    for (int i = 4+num_nop; i < 4+num_nop+4; ++i) {
+        printf("%x\n", rx_buf[i]);
+    }
+    while(1) {}
+    // new_spi_master_xfer(spi_master_dev, tx_buf, rx_buf, 640);
+    // while (1) {
+    //     for (int j = 2; j < 50; ++j) {
+    //         new_spi_master_set_clk_div(spi_master_dev, j);
+    //         new_spi_master_init_xfer(spi_master_dev);
+    //         for (int i = 1; i <= 640; ++i) {
+    //             memset(rx_buf, 0, sizeof(rx_buf));
+    //             new_spi_master_xfer(spi_master_dev, tx_buf, rx_buf, i);
+    //             check_data_same(rx_buf, tx_buf, i, j);
+    //         }
+    //     }
+    //     printf("d\n");
+    //     // printf("%x %x %x %x\n", rx_buf[0], rx_buf[1], rx_buf[2], rx_buf[3]);
+    // }
 }
 
 // DECLARE_JOB(read_sensor_task, (spi_master_t*, spi_master_device_t*));
@@ -269,7 +310,7 @@ void read_sensor_task(spi_master_handle_t* spi_ctx, spi_master_device_handle_t* 
 
 uint8_t spi_slave_tx_buf[16] = {0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC, 0xDE, 0xFF};
 uint8_t spi_slave_rx_buf[16];
-uint8_t spi_slave_reg[10] = {0};
+// uint8_t spi_slave_reg[10] = {0};
 
 SPI_CALLBACK_ATTR
 void spi_slave_transaction_started(void *app_data, uint8_t **out_buf, size_t *outbuf_len, uint8_t **in_buf, size_t *inbuf_len) {
@@ -330,6 +371,7 @@ void main_tile0(chanend_t c_tile1, unsigned tile1_id)
     port_t p_s_mosi  = PORT_I2C_SCL;    // SCL
     xclock_t clk1    = XS1_CLKBLK_2;
     spi_slave_handle_t spi_slave_handle;
+    new_spi_slave_callback_group_t spi_slave_cb;
 #elif defined(OUT_REF_CLK)
     port_t p_ref     = PORT_SQI_SCLK_0; // SPI CLK
     xclock_t clk_ref = XS1_CLKBLK_1;
@@ -361,6 +403,15 @@ void main_tile0(chanend_t c_tile1, unsigned tile1_id)
     spi_master_device_handle_t spi_dev;
     new_spi_master_init(&spi_ctx, p_m_sclk, p_m_miso, p_m_mosi, p_m_cs, clk0, true);
     new_spi_master_device_init(&spi_ctx, &spi_dev, 0, 0, 0, spi_clock_source_ref_clk, 0);
+    spi_slave_reg_handle_t spi_slave_handler;
+    struct RegMap {
+        uint32_t x;
+        uint32_t y;
+        uint32_t dummy0;
+        uint32_t dummy1;
+        uint32_t dummy2;
+        uint32_t dummy3;
+    } reg_map;
     // spi_master_t spi_ctx;
     // spi_master_device_t spi_dev;
 
@@ -374,13 +425,14 @@ void main_tile0(chanend_t c_tile1, unsigned tile1_id)
 #endif
 #if defined(SPI_TASK)
         // PJOB(spi_master_new, (c_tile1, p_m_sclk, p_m_miso, p_m_mosi, p_m_cs, clk0)),
-        PJOB(dummy_task, ()),
-        PJOB(dummy_task, ()),
-        PJOB(dummy_task, ()),
-        PJOB(dummy_task, ()),
-        PJOB(dummy_task, ()),
+        // PJOB(dummy_task, ()),
+        // PJOB(dummy_task, ()),
+        // PJOB(dummy_task, ()),
+        // PJOB(dummy_task, ()),
+        // PJOB(dummy_task, ()),
         PJOB(read_sensor_task, (&spi_ctx, &spi_dev)),
-        PJOB(new_spi_slave, (&spi_slave_handle, p_s_sclk, p_s_mosi, p_s_miso, p_s_ss, clk1, 0, 0))
+        // PJOB(new_spi_slave, (&spi_slave_handle, p_s_sclk, p_s_mosi, p_s_miso, p_s_ss, clk1, &spi_slave_cb, 0, 0))
+        PJOB(spi_slave_reg, (&spi_slave_handler, p_s_sclk, p_s_mosi, p_s_miso, p_s_ss, clk1, (spi_slave_reg_t*)&reg_map, 0, 0, 0, num_nop, 1))
 #elif defined(DUMMY_TASK)
 #if DUMMY_TASK > 4
         PJOB(dummy_task, ()),

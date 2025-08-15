@@ -192,37 +192,177 @@ void new_spi_master_xfer(spi_master_device_handle_t* handle, uint8_t* tx_buf, ui
 
 #define ASSERTED 1
 
+void new_spi_slave_set_xfer_width(
+    spi_slave_handle_t* handler,
+    uint32_t transfer_width
+) {
+    port_set_transfer_width(handler->p_mosi, transfer_width);
+    port_set_transfer_width(handler->p_miso, transfer_width);
+    handler->xfer_width = transfer_width;
+}
+
 void new_spi_slave(
     spi_slave_handle_t* handler,
-    port_t p_sclk,
+    port_t p_sck,
     port_t p_mosi,
     port_t p_miso,
     port_t p_cs,
     xclock_t cb_clk,
+    new_spi_slave_callback_group_t* callbacks,
     int cpol,
     int cpha
 ) {
 
-    uint32_t in_word;
-    uint32_t out_word;
+    handler->p_sck = p_sck;
+    handler->p_mosi = p_mosi;
+    handler->p_miso = p_miso;
+    handler->p_cs = p_cs;
+    handler->clk_blk = cb_clk;
+    handler->callbacks = callbacks;
 
     /* Setup the chip select port */
     port_enable(p_cs);
     port_set_invert(p_cs);
 
     /* Setup the SCLK port and associated clock block */
-    port_enable(p_sclk);
+    port_enable(p_sck);
     clock_enable(cb_clk);
-    clock_set_source_port(cb_clk, p_sclk);
+    clock_set_source_port(cb_clk, p_sck);
     clock_set_divide(cb_clk, 0);    /* Ensure divide is 0 */
 
     /* Setup the MOSI port */
     // port_start_buffered(p_mosi, 32);
     port_enable(p_mosi);
     port_protocol_in_strobed_slave(p_mosi, p_cs, cb_clk);
-    port_set_transfer_width(p_mosi, 8);
+    // port_set_transfer_width(p_mosi, 32);
 
     port_set_clock(p_cs, cb_clk);
+    /* Setup the MISO port */
+    if (p_miso != 0) {
+        port_enable(p_miso);
+        port_protocol_out_strobed_slave(p_miso, p_cs, cb_clk, 0);
+        // port_set_transfer_width(p_miso, 32);
+    }
+
+    new_spi_slave_set_xfer_width(handler, 32);
+
+    if (cpol != cpha) {
+        port_set_invert(p_sck);
+    } else {
+        port_set_no_invert(p_sck);
+    }
+
+    clock_start(cb_clk);
+
+    port_sync(p_sck);
+
+    /* Wait until CS is not asserted to begin */
+    handler->cs_val = port_in_when_pinsneq(p_cs, PORT_UNBUFFERED, ASSERTED);
+
+    // triggerable_enable_trigger(p_cs);
+    port_set_trigger_in_not_equal(p_cs, handler->cs_val);
+    
+    triggerable_enable_trigger(p_mosi);
+
+    // printf("started\n");
+    uint32_t d_list[5] = {0};
+    size_t d_cnt = 0;
+
+    // SELECT_RES(
+    //     CASE_THEN(p_cs, cs_handler),
+    //     CASE_THEN(p_mosi, xfer_handler)) {
+    //         cs_handler: {
+    //             handler->cs_val = port_in(p_cs);
+    //             handler->callbacks->xfer_started_cb(
+    //                 handler->callbacks->app_data,
+    //                 &handler->tx_buf, &handler->tx_len,
+    //                 &handler->rx_buf, &handler->rx_len);
+    //             handler->xfer_idx = 0;
+    //             port_set_trigger_in_not_equal(p_cs, handler->cs_val);
+    //             continue;
+    //         }
+    //         xfer_handler: {
+    //             uint32_t d = port_in(p_mosi);
+    //             uint32_t mask;
+    //             asm volatile("mkmsk %0, %1": "=r"(mask) : "r"(handler->xfer_width));
+    //             d = bitrev(d) & mask;
+    //             uint32_t xfer_remain = handler->xfer_width;
+    //             while (xfer_remain) {
+
+    //             }
+    //             continue;
+    //         }
+    //     }
+}
+
+extern unsigned spi_slave_reg_xfer(
+    port_t p_miso,
+    port_t p_mosi,
+    port_t p_cs,
+    void* reg_map,
+    size_t reg_map_len,
+    size_t num_nop,
+    size_t miso_offset // set to non zero when clk to data timing can't match with desire clk rate, can't use when num_nop is not zero
+);
+
+static void set_pad_delay(port_t p, int pad_delay) {
+    int c_word = XS1_SETC_MODE_LONG;
+    c_word = XS1_SETC_LMODE_SET(c_word, XS1_SETC_LMODE_PIN_DELAY); 
+    c_word = XS1_SETC_VALUE_SET(c_word, pad_delay); 
+    // port_write_control_word(p, c_word); 
+    asm volatile( "setc res[%0], %1" :: "r" (p), "r" (c_word));
+}
+
+static void set_clk_rise_delay(xclock_t clk, int delay) {
+    int c_word = XS1_SETC_MODE_LONG;
+    c_word = XS1_SETC_LMODE_SET(c_word, XS1_SETC_LMODE_RISE_DELAY); 
+    c_word = XS1_SETC_VALUE_SET(c_word, delay);
+    asm volatile( "setc res[%0], %1" :: "r" (clk), "r" (c_word));
+}
+
+static void set_clk_fall_delay(xclock_t clk, int delay) {
+    int c_word = XS1_SETC_MODE_LONG;
+    c_word = XS1_SETC_LMODE_SET(c_word, XS1_SETC_LMODE_FALL_DELAY); 
+    c_word = XS1_SETC_VALUE_SET(c_word, delay);
+    asm volatile( "setc res[%0], %1" :: "r" (clk), "r" (c_word));
+}
+
+void spi_slave_reg(
+    spi_slave_reg_handle_t* handler,
+    port_t p_sck,
+    port_t p_mosi,
+    port_t p_miso,
+    port_t p_cs,
+    xclock_t cb_clk,
+    spi_slave_reg_t* reg_map,
+    size_t reg_map_len,
+    int cpol,
+    int cpha,
+    size_t num_nop,
+    size_t miso_offset // set to non zero when clk to data timing can't match with desire clk rate, can't use when num_nop is not zero
+) {
+    handler->p_sck = p_sck;
+    handler->p_mosi = p_mosi;
+    handler->p_miso = p_miso;
+    handler->p_cs = p_cs;
+    handler->clk_blk = cb_clk;
+
+    /* Setup the chip select port */
+    port_enable(p_cs);
+    port_set_invert(p_cs);
+
+    /* Setup the SCK port and associated clock block */
+    port_enable(p_sck);
+    clock_enable(cb_clk);
+    clock_set_source_port(cb_clk, p_sck);
+    clock_set_divide(cb_clk, 0);    /* Ensure divide is 0 */
+
+    /* Setup the MOSI port */
+    port_enable(p_mosi);
+    port_protocol_in_strobed_slave(p_mosi, p_cs, cb_clk);
+    port_set_transfer_width(p_mosi, 32);
+
+    // port_set_clock(p_cs, cb_clk);
     /* Setup the MISO port */
     if (p_miso != 0) {
         port_enable(p_miso);
@@ -231,47 +371,56 @@ void new_spi_slave(
     }
 
     if (cpol != cpha) {
-        port_set_invert(p_sclk);
+        port_set_invert(p_sck);
     } else {
-        port_set_no_invert(p_sclk);
+        port_set_no_invert(p_sck);
     }
 
+    // set_clk_rise_delay(cb_clk, 1);
+    // set_clk_fall_delay(cb_clk, 1);
     clock_start(cb_clk);
 
-    // port_sync(p_sclk);
+    port_sync(p_sck);
 
     /* Wait until CS is not asserted to begin */
-    // handler->cs_val = port_in_when_pinsneq(p_cs, PORT_UNBUFFERED, ASSERTED);
+    handler->cs_val = port_in_when_pinsneq(p_cs, PORT_UNBUFFERED, ASSERTED);
 
-    // triggerable_enable_trigger(p_cs);
-    // port_set_trigger_in_not_equal(p_cs, handler->cs_val);
-    // port_set_trigger_in_equal(p_cs, 0xFFFF);
+    triggerable_enable_trigger(p_cs);
+    port_set_trigger_in_not_equal(p_cs, handler->cs_val);
+    // printf("%d\n", handler->cs_val);
+    
     triggerable_enable_trigger(p_mosi);
 
-    // printf("started\n");
-    uint32_t d_list[5] = {0};
-    size_t d_cnt = 0;
+    // SELECT_RES(
+    //     CASE_THEN(p_cs, cs_handler),
+    //     CASE_THEN(p_mosi, xfer_handler)) {
+    //         cs_handler: {
+    //             handler->cs_val = port_in(p_cs);
+    //             port_set_trigger_in_not_equal(p_cs, handler->cs_val);
+    //             continue;
+    //         }
+    //         xfer_handler: {
+    //             volatile uint32_t data = port_in(p_mosi);
+    //             printf("%x\n", data);
+    //             continue;
+    //         }
+    //     }
 
-    SELECT_RES(
-        // CASE_THEN(p_cs, cs_handler),
-        CASE_THEN(p_mosi, xfer_handler)) {
-            // cs_handler: {
-            //     handler->cs_val = port_in(p_cs);
-            //     port_set_trigger_in_not_equal(p_cs, handler->cs_val);
-            //     continue;
-            // }
-            xfer_handler: {
-                uint32_t d = port_in(p_mosi);
-                d_list[d_cnt++] = d;
-                if (d_cnt == 5) {
-                    for (int i = 0; i < d_cnt; ++i) {
-                        printf("%lx ", d_list[i]);
-                    }
-                    printf("d\n");
-                    d_cnt = 0;
-                }
-                // port_set_trigger_in_not_equal(p_mosi, d);
-                continue;
-            }
-        }
+    set_pad_delay(p_mosi, 1);
+
+    printf("r%x\n",spi_slave_reg_xfer(
+        p_miso, p_mosi, p_cs,
+        reg_map, reg_map_len,
+        num_nop*8+1,
+        miso_offset
+    )
+    );
+    for (int i = 0; i < 4; ++i) {
+        printf("%x\n", ((uint8_t*)reg_map)[i]);
+    }
+}
+
+
+void spi_slave_update_reg(spi_slave_reg_handle_t* handler, uint32_t addr, size_t len) {
+    // memcpy(&handler->reg_map->reg[addr], &handler->reg_map->shadow[addr], len);
 }

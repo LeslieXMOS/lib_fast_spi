@@ -76,7 +76,7 @@ first_xfer:
     { out res[r0], r11      ; ldw r6, r3[0]         }   // output sck clk pattern, r6: tx_buf[4]
     { out res[r2], r9       ; byterev r6, r6        }   // output mosi (2, 3 Bytes)
     { bitrev r6, r6         ; sub r5, r5, 4         }   // xfer_len -= 4
-    { add r7, r6, 0         ; ldc r10, 0x5          }   // r7 = r6, for zip operation
+    { add r7, r6, 0         ; ldc r10, 0x6          }   // r7 = r6, for zip operation
     zip r7, r6, 0
     { lsu r10, r5, r10      ; out res[r0], r11      }   // output sck clk pattern
     { bt r10, remainder_xfer; out res[r2], r6       }   // output mosi (0, 1 Bytes), r6 r10 free now
