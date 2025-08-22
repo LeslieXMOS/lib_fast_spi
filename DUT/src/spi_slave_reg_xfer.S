@@ -68,86 +68,98 @@ prepare:
     { setc res[r0], RUN_CLRBUF  ; nop                   }
     { setc res[r0], RUN_CLRBUF  ; nop                   }   // make sure p_miso is all clear
     { add r4, r3, r4            ; ldap r11, cs_handle   }   // r4: end of reg_map
-    { setv res[r2], r11         ; ldap r11, xfer_handle }   // set cs event
+    { setv res[r2], r11         ; ldap r11, setup_handle}   // set cs event
     { setv res[r1], r11         ; ldc r5, IDLE          }   // set mosi event, r5: state (IDLE)
     { eeu res[r1]               ; nop                   }   // enable mosi event
     { eeu res[r2]               ; nop                   }   // enable cs event
     { waiteu                    ; nop                   }
 
 cs_handle:
-    { in r6, res[r2]        ; nop                   }   // r5: state (IDLE)
-    { setd res[r2], r6      ; eq r6, r6, 0          }   // r6: check if cs deassert, should call callback or clean up
-    { bt r6, xfer_cleanup   ; nop                   }
+    { in r11, res[r2]       ; nop                   }   // r5: state (IDLE)
+    { setd res[r2], r11     ; eq r11, r11, 0        }   // r6: check if cs deassert, should call callback or clean up
+    { bt r11, xfer_cleanup  ; nop                   }
     { waiteu                ; nop                   }
 
-xfer_handle:
-    { getts r6, res[r1]     ; eq r11, r5, IDLE      }   // r6: miso input port time, r11: if state is IDLE
-    { bt r11, setup         ; in r7, res[r1]        }
-    { bitrev r7, r7         ; ldw r9, r8[0]         }
-    { byterev r7, r7        ; bitrev r9, r9         }
-    { eq r11, r5, WR_DATA   ; byterev r9, r9        }
-    { bt r11, mosi          ; eq r11, r5, RD_DATA   }
-    { bt r11, miso          ; eq r11, r5, WR_NOP    }
-    { bt r11, clear_nop     ; nop                   }
-
-mosi:
-    { stw r7, r8[0]         ; add r8, r8, 4         }
-    //{ bu exit; add r0, r7, 0}
-    { waiteu                ; nop                   }
-
-miso:
-    { out res[r0], r9       ; add r8, r8, 4         }
-    { waiteu                ; nop                   }
-
-clear_nop:
-    { ldc r5, WR_DATA       ; nop                   }   // looks like need to set r5 before waiteu
-    { waiteu                ; nop                   }
-
-setup:
-    { bitrev r7, r7         ; mkmsk r8, 8               }   // r8: state bitmask
-    { byterev r7, r7        ; ldw r9, sp[NSTACKWORDS+2] }   // r9: nop cycle
-    { and r5, r7, r8        ; shr r8, r7, 8             }   // r5: state, r8: address, r7 free now
-    { add r8, r3, r8        ; mkmsk r10, 2              }   // r8: real address, r10: address offset bitmask
-    { add r6, r6, r9        ; and r10, r8, r10          }   // r6: next xfer time, r10: offset byte, r9 free now
-    { eq r7, r5, WR_DATA    ; ldc r9, 4                 }   // r9: 4 (for partial read)
+setup_handle:
+    { getts r6, res[r1]     ; ldw r9, sp[NSTACKWORDS+2] }   // r9: nop cycle
+    { in r5, res[r1]        ; add r6, r6, r9            }   // r5: in data, r6: next xfer time, r9 free now
+    { bitrev r5, r5         ; mkmsk r9, 2               }   // r9: mask for address align check
+    { byterev r5, r5        ; nop                       }
+    { zext r5, 8            ; shr r8, r5, 8             }   // r5: state, r8: address
+    { add r8, r3, r8        ; eq r7, r5, WR_DATA        }   // r8: real address
     { bt r7, setup_wr       ; eq r7, r5, RD_DATA        }
-    //{ add r0, r5, 0; bu exit}
-    { bt r7, setup_rd       ; nop                       }           
+    { bt r7, setup_rd       ; nop                       }
 
 setup_wr:
-    { ldc r7, 1             ; ldc r5, WR_NOP            }
-    { sub r6, r6, r7        ; nop                       }
-    { setpt res[r1], r6     ; nop                       }
+    { sub r6, r6, 1         ; and r7, r8, r9            }   // r6: next in time, r7: address offset (byte)
+    { sub r8, r8, r7        ; shl r7, r7, 3             }   // r8: aligned address, r7: address offset (bit)
+    { setpt res[r1], r6     ; ldw r6, r8[0]             }   // r6: aligned data
+    { byterev r6, r6        ; ldc r10, 32               }
+    { bitrev r6, r6         ; ldap r11, wr_nop          }
+    { zext r6, r7           ; setv res[r1], r11         }   // r6: partial offset data
+    { ldc r5, WR_NOP        ; sub r10, r10, r7          }   // r10: partial wr bit
     { waiteu                ; nop                       }
 
 setup_rd:
-    { ldw r9, r8[0]         ; add r8, r8, 4             }
-    { bitrev r9, r9         ; ldw r10, r8[0]            }
-    { byterev r9, r9        ; ldw r7, sp[NSTACKWORDS+3] }   // miso offset
-    { sub r6, r6, r7        ; nop                       }
-    { setpt res[r0], r6     ; bitrev r10, r10           }
-    { out res[r0], r9       ; byterev r10, r10          }
-    { out res[r0], r10      ; add r8, r8, 4             }
+    { and r9, r8, r9        ; ldw r7, sp[NSTACKWORDS+3] }   // r9: address offset (byte), r7: miso offset
+    { sub r6, r6, r7        ; sub r8, r8, r9            }   // r6: next out time, r8: aligned address, r7 free now
+    { setpt res[r0], r6     ; shl r9, r9, 3             }   // r9: address offset (bit)
+    { add r6, r6, r9        ; ldw r7, r8[0]             }   // r7: aligned data
+    { setpt res[r1], r6     ; bitrev r6, r7             }   // set p_mosi time, to trigger event
+    { byterev r6, r6        ; ldc r7, 32                }
+    { shr r6, r6, r9        ; sub r9, r7, r9            }   // r9: partial out bit
+    outpw res[r0], r6, r9
+    { ldw r6, r8[1]         ; add r8, r8, 8             }
+    { ldap r11, rd_xfer     ; ldw r7, r8[0]             }
+    { bitrev r6, r6         ; setv res[r1], r11         }
+    { byterev r6, r6        ; bitrev r7, r7             }
+    { out res[r0], r6       ; byterev r7, r7            }
+    { waiteu                ; nop                       }
+
+wr_nop:
+    { in r5, res[r1]        ; ldap r11, wr_xfer     }
+    { setv res[r1], r11     ; ldc r5, WR_DATA       }
+    { waiteu                ; nop                   }
+
+wr_xfer:
+    { in r9, res[r1]        ; nop                       }
+    { shl r9, r9, r7        ; shr r11, r9, r10          }   // r9: lower partial data, r11: upper partial data
+    { and r9, r9, r6        ; add r6, r11, 0            }   // r9: complete bit&byte rev data, r6: upper partial data, r11 is free
+    { bitrev r9, r9         ; nop                       }
+    { byterev r9, r9        ; nop                       }
+    { stw r9, r8[0]         ; add r8, r8, 4             }
+    { waiteu                ; nop                       }        
+
+rd_xfer:
+    { out res[r0], r7       ; ldw r7, r8[1]             }   // r8 always late 1 loop
+    { bitrev r7, r7         ; add r8, r8, 4             }
+    { byterev r7, r7        ; in r11, res[r1]           }   // r11 read dummy value from p_mosi to keep event keep firing
     { waiteu                ; nop                       }
 
 xfer_cleanup:   // TODO: read the remaining
-    { setc res[r0], RUN_CLRBUF  ; ldc r10, 32           }   // make sure p_miso is all clear
-    { setc res[r0], RUN_CLRBUF  ; eq r7, r5, WR_DATA    }   // giving more time for p_mosi load data
-    { endin r9, res[r1]         ; bf r7, cleanup_done   }   // r9: num bit in
-    { in r11, res[r1]           ; ldc r7, 0             }   // r11: last bit of data
-    { bitrev r11, r11           ; sub r10, r10, r9      }   // r10: num useless bit
-    { byterev r11, r11          ; shr r9, r9, 3         }   // r9: num byte left
-    { shr r11, r11, r10         ; bf r9, cleanup_done   }
-
-st8_loop:
-    st8 r11, r8[r7]
-    { shr r11, r11, 8           ; sub r9, r9, 1         }
-    { bt r9, st8_loop           ; add r8, r8, 1         }
-
+    { setc res[r0], RUN_CLRBUF  ; eq r11, r5, WR_DATA   }   // make sure p_miso is all clear
+    { setc res[r0], RUN_CLRBUF  ; bf r11, cleanup_done  }   // giving more time for p_mosi load data
+    { bitrev r6, r6             ; bf r7, wr_cleanup     }
+    { byterev r6, r6            ; ldc r11, 0            }
+clean_loop_1:
+    st8 r6, r8[r11]
+    { shr r6, r6, 8             ; sub r7, r7, 8         }
+    { bt r7, clean_loop_1       ; add r8, r8, 1         }
+wr_cleanup:
+    { endin r7, res[r1]         ; ldc r6, 32            }   // r7: num bit in
+    { in r9, res[r1]            ; sub r6, r6, r7        }   // r6: num useless bit
+    { shr r9, r9, r6            ; bf r7, cleanup_done   }
+    { bitrev r9, r9             ; ldc r11, 0            }
+    { byterev r9, r9            ; nop                   }
+clean_loop_2:
+    st8 r9, r8[r11]
+    { shr r9, r9, 8             ; sub r7, r7, 8         }
+    { bt r7, clean_loop_2       ; add r8, r8, 1         }
 cleanup_done:
     { clrpt res[r1]             ; nop                   }
     { setc res[r1], RUN_CLRBUF  ; ldc r5, IDLE          }   // make sure p_mosi is all clear
-    { setc res[r1], RUN_CLRBUF  ; nop                   }
+    { setc res[r1], RUN_CLRBUF  ; ldap r11, setup_handle}
+    { setv res[r1], r11         ; nop                   }
     { waiteu                    ; nop                   }
 
     //{add r0, r9, 0;bu exit}

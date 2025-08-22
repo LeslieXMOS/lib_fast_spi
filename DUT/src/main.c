@@ -186,7 +186,7 @@ void read_sensor_task(spi_master_handle_t* spi_ctx, spi_master_device_handle_t* 
     }
     // printf("start\n");
     // delay_microseconds(50);
-    new_spi_master_xfer(spi_master_dev, tx_wr_reg_buf, rx_buf, 8+num_nop);
+    new_spi_master_xfer(spi_master_dev, tx_wr_reg_buf, rx_buf, 8+num_nop-4);
     for (int i = 0; i < 100; ++i) {
         asm volatile("nop");
     }
@@ -412,6 +412,7 @@ void main_tile0(chanend_t c_tile1, unsigned tile1_id)
         uint32_t dummy2;
         uint32_t dummy3;
     } reg_map;
+    reg_map.x = 0x7832;
     // spi_master_t spi_ctx;
     // spi_master_device_t spi_dev;
 
