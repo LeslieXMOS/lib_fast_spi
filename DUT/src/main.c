@@ -186,7 +186,7 @@ void read_sensor_task(spi_master_handle_t* spi_ctx, spi_master_device_handle_t* 
     }
     // printf("start\n");
     // delay_microseconds(50);
-    new_spi_master_xfer(spi_master_dev, tx_wr_reg_buf, rx_buf, 8+num_nop-4);
+    new_spi_master_xfer(spi_master_dev, tx_wr_reg_buf, rx_buf, 8+num_nop);
     for (int i = 0; i < 100; ++i) {
         asm volatile("nop");
     }
