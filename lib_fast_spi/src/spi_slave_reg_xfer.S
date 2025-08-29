@@ -86,9 +86,12 @@ setup_handle:
     { bitrev r5, r5         ; mkmsk r9, 2               }   // r9: mask for address align check
     { byterev r5, r5        ; nop                       }
     { zext r5, 8            ; shr r8, r5, 8             }   // r5: state, r8: address
-    { add r8, r3, r8        ; eq r7, r5, WR_DATA        }   // r8: real address
-    { bt r7, setup_wr       ; eq r7, r5, RD_DATA        }
-    { bt r7, setup_rd       ; nop                       }
+    { add r8, r3, r8        ; nop                       }
+    { nop                   ; lsu r7, r8, r4            }   // r7: check if address overflow
+    { bf r7, cleanup_done   ; lsu r7, r8, r3            }   // r7: check if address underflow
+    { bt r7, cleanup_done   ; eq r7, r5, RD_DATA        }   // r8: real address
+    { bt r7, setup_rd       ; eq r7, r5, WR_DATA        }
+    { bf r7, cleanup_done   ; nop                       }
 
 setup_wr:
     { sub r6, r6, 1         ; and r7, r8, r9            }   // r6: next in time, r7: address offset (byte)
@@ -124,22 +127,24 @@ wr_xfer:
     { in r9, res[r1]        ; nop                       }
     { shl r9, r9, r7        ; shr r11, r9, r10          }   // r9: lower partial data, r11: upper partial data
     { or r9, r9, r6         ; add r6, r11, 0            }   // r9: complete bit&byte rev data, r6: upper partial data, r11 is free
-    { bitrev r9, r9         ; nop                       }
-    { byterev r9, r9        ; nop                       }
+    { bitrev r9, r9         ; lsu r11, r8, r4           }
+    { byterev r9, r9        ; bf r11, cleanup_done      }
     { stw r9, r8[0]         ; add r8, r8, 4             }
     { waiteu                ; nop                       }        
 
 rd_xfer:
     { out res[r0], r6       ; ldw r6, r8[0]             }
     { bitrev r6, r6         ; add r8, r8, 4             }
-    { byterev r6, r6        ; in r11, res[r1]           }   // r11 read dummy value from p_mosi to keep event keep firing
+    { lsu r10, r8, r4       ; in r11, res[r1]           }   // r11 read dummy value from p_mosi to keep event keep firing
+    { byterev r6, r6        ; bf r10, cleanup_done      }
     { waiteu                ; nop                       }
 
 xfer_cleanup:
     { setc res[r0], RUN_CLRBUF  ; eq r11, r5, WR_DATA   }   // make sure p_miso is all clear
     { setc res[r0], RUN_CLRBUF  ; bf r11, cleanup_done  }   // giving more time for p_mosi load data
     { bitrev r6, r6             ; bf r7, wr_cleanup     }
-    { byterev r6, r6            ; ldc r11, 0            }
+    { byterev r6, r6            ; lsu r11, r8, r4       }
+    { bf r11, cleanup_done      ; ldc r11, 0           }
 clean_loop_1:
     st8 r6, r8[r11]
     { shr r6, r6, 8             ; sub r7, r7, 8         }
@@ -147,12 +152,13 @@ clean_loop_1:
 wr_cleanup:
     { endin r7, res[r1]         ; ldc r6, 32            }   // r7: num bit in
     { in r9, res[r1]            ; sub r6, r6, r7        }   // r6: num useless bit
-    { shr r9, r9, r6            ; bf r7, cleanup_done   }
-    { bitrev r9, r9             ; ldc r11, 0            }
-    { byterev r9, r9            ; nop                   }
+    { shr r9, r9, r6            ; shr r7, r7, 3         }   // r7: num byte in
+    { bitrev r9, r9             ; bf r7, cleanup_done   }
+    { byterev r9, r9            ; lsu r11, r8, r4       }
+    { ldc r11, 0                ; bf r11, cleanup_done  }
 clean_loop_2:
     st8 r9, r8[r11]
-    { shr r9, r9, 8             ; sub r7, r7, 8         }
+    { shr r9, r9, 8             ; sub r7, r7, 1         }
     { bt r7, clean_loop_2       ; add r8, r8, 1         }
 cleanup_done:
     { clrpt res[r1]             ; nop                   }
