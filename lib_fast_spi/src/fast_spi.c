@@ -43,8 +43,8 @@ void fast_spi_master_init(fast_spi_master_handle_t* handle, port_t p_sck, port_t
 }
 
 void fast_spi_master_device_init(
-    fast_spi_master_handle_t* master, 
-    fast_spi_master_device_handle_t* handle, 
+    fast_spi_master_handle_t* master,
+    fast_spi_master_device_handle_t* handle,
     uint32_t cs_pin,
     uint8_t cpol, uint8_t cpha,
     fast_spi_clock_source_t source_clk,
@@ -114,7 +114,6 @@ void fast_spi_master_set_clk_div(fast_spi_master_device_handle_t* handle, uint32
     }
     handle->input_delay = 32 + setup_tick / sck_period;
     handle->input_delay_1B = 16 + setup_tick / sck_period;
-    printf("delay: %d\n", handle->input_delay);
 }
 
 void fast_spi_master_init_xfer(fast_spi_master_device_handle_t* handle) {
@@ -218,22 +217,22 @@ extern unsigned spi_slave_reg_xfer(
 
 static void set_pad_delay(port_t p, int pad_delay) {
     int c_word = XS1_SETC_MODE_LONG;
-    c_word = XS1_SETC_LMODE_SET(c_word, XS1_SETC_LMODE_PIN_DELAY); 
-    c_word = XS1_SETC_VALUE_SET(c_word, pad_delay); 
-    // port_write_control_word(p, c_word); 
+    c_word = XS1_SETC_LMODE_SET(c_word, XS1_SETC_LMODE_PIN_DELAY);
+    c_word = XS1_SETC_VALUE_SET(c_word, pad_delay);
+    // port_write_control_word(p, c_word);
     asm volatile( "setc res[%0], %1" :: "r" (p), "r" (c_word));
 }
 
 // static void set_clk_rise_delay(xclock_t clk, int delay) {
 //     int c_word = XS1_SETC_MODE_LONG;
-//     c_word = XS1_SETC_LMODE_SET(c_word, XS1_SETC_LMODE_RISE_DELAY); 
+//     c_word = XS1_SETC_LMODE_SET(c_word, XS1_SETC_LMODE_RISE_DELAY);
 //     c_word = XS1_SETC_VALUE_SET(c_word, delay);
 //     asm volatile( "setc res[%0], %1" :: "r" (clk), "r" (c_word));
 // }
 
 // static void set_clk_fall_delay(xclock_t clk, int delay) {
 //     int c_word = XS1_SETC_MODE_LONG;
-//     c_word = XS1_SETC_LMODE_SET(c_word, XS1_SETC_LMODE_FALL_DELAY); 
+//     c_word = XS1_SETC_LMODE_SET(c_word, XS1_SETC_LMODE_FALL_DELAY);
 //     c_word = XS1_SETC_VALUE_SET(c_word, delay);
 //     asm volatile( "setc res[%0], %1" :: "r" (clk), "r" (c_word));
 // }
@@ -295,21 +294,17 @@ void fast_spi_slave_reg(
 
     triggerable_enable_trigger(p_cs);
     port_set_trigger_in_not_equal(p_cs, handler->cs_val);
-    
+
     triggerable_enable_trigger(p_mosi);
 
     set_pad_delay(p_mosi, 1);
 
-    printf("r%x\n",spi_slave_reg_xfer(
+    spi_slave_reg_xfer(
         p_miso, p_mosi, p_cs,
         reg_map, reg_map_len,
         num_nop*8+1,
         miso_offset
-    )
     );
-    for (int i = 0; i < 4; ++i) {
-        printf("%x\n", ((uint8_t*)reg_map)[i]);
-    }
 }
 
 
